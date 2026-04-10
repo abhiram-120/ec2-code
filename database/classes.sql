@@ -1,0 +1,12 @@
+// ALTER TABLE `classes`
+// ADD COLUMN `recording_status` ENUM('pending','processing','completed','failed') 
+//     NOT NULL DEFAULT 'pending' 
+//     AFTER `batch_id`,
+// ADD COLUMN `recording_url` TEXT 
+//     NULL 
+//     AFTER `recording_status`;
+
+
+// updated on 26th march
+// ALTER TABLE classes
+// ADD COLUMN payment_status ENUM('paid', 'unpaid') NOT NULL DEFAULT 'unpaid';
