@@ -2225,6 +2225,7 @@ function formatClassResponse(classItem) {
         cancelled_at: classItem.cancelled_at,
         cancellation_reason: classItem.cancellation_reason,
         join_url: classItem.join_url,
+            zoom_unique_join_url: classItem.zoom_unique_join_url || null,
         admin_url: classItem.admin_url,
         class_type: classItem.class_type,
         is_trial: classItem.is_trial,

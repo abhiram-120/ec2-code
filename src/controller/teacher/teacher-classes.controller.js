@@ -198,7 +198,7 @@ async function viewTeacherClasses(req, res) {
             Class.findAll({
                 attributes: [
                     'id', 'student_id', 'is_trial', 'meeting_start', 'meeting_end',
-                    'status', 'join_url', 'admin_url', 'feedback_id',
+                    'status', 'join_url', 'zoom_unique_join_url', 'admin_url', 'feedback_id',
                     'class_type', 'demo_class_id', 'student_goal', 'is_present', 'is_regular_hide',
                     'cancelled_at', 'payment_status'
                 ],
@@ -372,6 +372,7 @@ async function viewTeacherClasses(req, res) {
                 canceledAt: classItem.cancelled_at,
                 cancellation_time_diff_minutes: cancellationDiffMinutes,
                 joinUrl: classItem.join_url,
+                    zoomUniqueJoinUrl: classItem.zoom_unique_join_url || null,
                 adminUrl: classItem.admin_url,
                 feedbackId: classItem.feedback_id,
                 hasFeedback: !!feedback,

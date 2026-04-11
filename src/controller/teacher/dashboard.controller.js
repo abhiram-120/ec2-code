@@ -147,6 +147,7 @@ const getTeacherDashboard = async (req, res) => {
                     ? 'in_progress'
                     : 'pending',
                 join_url: cls.join_url || null,
+                zoom_unique_join_url: cls.zoom_unique_join_url || null,
                 is_trial: !!cls.is_trial,
                 is_regular: cls.class_type === 'regular',
                 // in_progress: now >= startTime && now <= endTime
@@ -305,6 +306,7 @@ const getTeacherDashboard = async (req, res) => {
                 end_datetime: endTime.format(),
                 minutes_remaining: minutesRemaining > 0 ? minutesRemaining : 0,
                 join_url: nextClass.join_url || null,
+                zoom_unique_join_url: nextClass.zoom_unique_join_url || null,
                 has_files: false, // This would need to be implemented with file attachments logic
                 has_messages: false // This would need message checking logic
             };
@@ -696,6 +698,7 @@ const getClassDetails = async (req, res) => {
             end_datetime: endTime.format(),
             status: classDetails.status,
             join_url: classDetails.join_url || null,
+            zoom_unique_join_url: classDetails.zoom_unique_join_url || null,
             admin_url: classDetails.admin_url || null,
             is_trial: !!classDetails.is_trial,
             is_regular: classDetails.class_type === 'regular',
@@ -918,6 +921,7 @@ const getUpcomingClasses = async (req, res) => {
                 minutes_remaining: minutesRemaining > 0 ? minutesRemaining : 0,
                 status: cls.status,
                 join_url: cls.join_url || null,
+                zoom_unique_join_url: cls.zoom_unique_join_url || null,
                 is_trial: !!cls.is_trial,
                 is_regular: cls.class_type === 'regular'
             };
@@ -1025,6 +1029,7 @@ const getTodayClasses = async (req, res) => {
                 minutes_remaining: minutesRemaining > 0 ? minutesRemaining : 0,
                 status: cls.status,
                 join_url: cls.join_url || null,
+                zoom_unique_join_url: cls.zoom_unique_join_url || null,
                 is_trial: !!cls.is_trial,
                 is_regular: cls.class_type === 'regular',
                 in_progress: now >= startTime && now <= endTime

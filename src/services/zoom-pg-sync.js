@@ -27,6 +27,8 @@ function getPool() {
 
 /**
  * Update zoom fields on Postgres classes table by class id.
+ * The row must already exist (Postgres is populated by a separate MySQL→PG sync process).
+ * Logs a warning if 0 rows affected — means Postgres row isn't there yet (timing race or sync stopped).
  * @param {number|string} classId
  * @param {string} meetingId
  * @param {string} joinUrl
@@ -35,11 +37,15 @@ async function syncZoomMeetingToPg(classId, meetingId, joinUrl) {
     const pool = getPool();
     if (!pool) return;
     try {
-        await pool.query(
-            `UPDATE classes SET zoom_unique_meeting_id = $1, zoom_unique_join_url = $2 WHERE id = $3`,
+        const result = await pool.query(
+            `UPDATE clean.classes SET zoom_unique_meeting_id = $1, zoom_unique_join_url = $2 WHERE class_id = $3`,
             [String(meetingId), joinUrl, classId]
         );
-        console.log(`[PgSync] class ${classId} → meeting ${meetingId}`);
+        if (result.rowCount === 0) {
+            console.warn(`[PgSync] class ${classId} not found in clean.classes — MySQL updated but PG skipped`);
+        } else {
+            console.log(`[PgSync] class ${classId} → meeting ${meetingId}`);
+        }
     } catch (err) {
         console.error(`[PgSync] Failed for class ${classId}: ${err.message}`);
     }

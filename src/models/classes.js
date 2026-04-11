@@ -168,81 +168,107 @@ const Class = sequelize.define(
             allowNull: false,
             comment: 'Whether the game approval has been completed for this class'
         },
+        zoom_meeting_id: {
+            type: DataTypes.BIGINT,
+            defaultValue: null
+        },
+        payment_status: {
+            type: DataTypes.ENUM('paid', 'unpaid'),
+            allowNull: false,
+            defaultValue: 'unpaid'
+        },
         zoom_unique_meeting_id: {
             type: DataTypes.STRING(255),
-            allowNull: true,
-            defaultValue: null,
-            unique: true,
-            comment: 'Unique per-class Zoom meeting ID (NOT the teacher PMI in zoom_id)'
+            defaultValue: null
         },
         zoom_unique_join_url: {
             type: DataTypes.TEXT,
-            allowNull: true,
-            defaultValue: null,
-            comment: 'Join URL for the unique per-class Zoom meeting'
+            defaultValue: null
         },
         zoom_retry_count: {
-            type: DataTypes.TINYINT.UNSIGNED,
-            allowNull: false,
-            defaultValue: 0,
-            comment: 'Retry attempts for Zoom meeting creation failures (max 5)'
+            type: DataTypes.TINYINT,
+            defaultValue: 0
         }
     },
     {
         tableName: 'classes',
-        timestamps: true,
-        createdAt: 'created_at',
-        updatedAt: 'updated_at',
+        timestamps: true, // Enable timestamps
+        createdAt: 'created_at', // Specify the field name for createdAt
+        updatedAt: 'updated_at', // Specify the field name for updatedAt
         underscored: true
     }
 );
 
-// ─── afterCreate hook: create a unique Zoom meeting for every new class ─────
-// Uses setImmediate so the outer Sequelize transaction has time to commit first.
-// If Zoom is down, the class booking still succeeds — zoomMeetingRetry cron
-// will pick it up and retry up to 5 times over the next 75 minutes.
+// ─── afterCreate hook: notify EC2 to create a unique Zoom meeting ─────────────
+// Fire-and-forget — class booking never fails due to Zoom being down.
+// If the call fails, the EC2 retry cron (every 15 min) will create the meeting anyway.
 Class.addHook('afterCreate', (classInstance) => {
     setImmediate(async () => {
         try {
-            const teacher = await User.findByPk(classInstance.teacher_id, {
-                attributes: ['id', 'email'],
-            });
+            const axios = require('axios');
+            const https = require('https');
+            const secret =
+                process.env.ZOOM_INTERNAL_SECRET || 'tulkka-zoom-internal-2026';
+            const apiPort =
+                Number(process.env.PORT) ||
+                Number(process.env.HTTP_PORT) ||
+                3000;
+            const publicZoomUrl =
+                process.env.ZOOM_INTERNAL_PUBLIC_URL ||
+                'https://ec2-13-63-69-253.eu-north-1.compute.amazonaws.com/api/internal/create-zoom';
+            const body = {
+                classId: classInstance.id,
+                teacherId: classInstance.teacher_id,
+                meetingStart: classInstance.meeting_start,
+                meetingEnd: classInstance.meeting_end
+            };
+            const tlsInsecure =
+                process.env.ZOOM_INTERNAL_TLS_INSECURE === '1' ||
+                process.env.ZOOM_INTERNAL_TLS_INSECURE === 'true';
 
-            if (!teacher?.email) {
-                console.warn(`[ZoomHook] No email for teacher_id=${classInstance.teacher_id}, class_id=${classInstance.id}`);
-                return;
+            const attempts = [];
+            if (process.env.ZOOM_INTERNAL_CREATE_URL) {
+                attempts.push({
+                    url: process.env.ZOOM_INTERNAL_CREATE_URL,
+                    httpsAgent: tlsInsecure ? new https.Agent({ rejectUnauthorized: false }) : undefined
+                });
+            } else {
+                // 1) Same host (Vinay EC2): avoids TLS to self. Works even if ZOOM_USE_LOOPBACK is missing in PM2 env.
+                attempts.push({
+                    url: `http://127.0.0.1:${apiPort}/api/internal/create-zoom`,
+                    httpsAgent: undefined
+                });
+                // 2) Remote API (Ashish): loopback fails — call Vinay; cert is self-signed so TLS must be relaxed here.
+                attempts.push({
+                    url: publicZoomUrl,
+                    httpsAgent: new https.Agent({ rejectUnauthorized: false })
+                });
             }
 
-            const durationMinutes = Math.ceil(
-                (new Date(classInstance.meeting_end) - new Date(classInstance.meeting_start)) / 60000
-            ) || 55;
-
-            const ZoomService = require('../services/zoom.service'); // lazy — avoids circular require
-            const meeting = await ZoomService.createMeeting(
-                teacher.email,
-                classInstance.meeting_start,
-                durationMinutes,
-                `Tulkka Class ${classInstance.id}`
-            );
-
-            await Class.update(
-                {
-                    zoom_unique_meeting_id: meeting.id,
-                    zoom_unique_join_url: meeting.join_url,
-                },
-                { where: { id: classInstance.id } }
-            );
-
-            // Sync to Postgres simultaneously
-            const { syncZoomMeetingToPg } = require('../services/zoom-pg-sync');
-            await syncZoomMeetingToPg(classInstance.id, meeting.id, meeting.join_url);
-
-            console.log(`[ZoomHook] class ${classInstance.id} → meeting ${meeting.id}`);
+            let lastErr;
+            for (const { url, httpsAgent } of attempts) {
+                try {
+                    await axios.post(url, body, {
+                        headers: { 'x-internal-secret': secret },
+                        timeout: 15000,
+                        ...(httpsAgent ? { httpsAgent } : {})
+                    });
+                    lastErr = null;
+                    break;
+                } catch (e) {
+                    lastErr = e;
+                }
+            }
+            if (lastErr) {
+                throw lastErr;
+            }
         } catch (err) {
-            // Non-blocking — retry cron picks this up automatically
-            console.error(`[ZoomHook] Failed for class ${classInstance.id}: ${err.message}`);
+            if (process.env.ZOOM_INTERNAL_DEBUG === '1' || process.env.ZOOM_INTERNAL_DEBUG === 'true') {
+                console.error('[Class.afterCreate create-zoom]', err.message);
+            }
         }
     });
 });
 
+// Export the model to use it in other parts of your application
 module.exports = Class;
